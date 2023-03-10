@@ -8,18 +8,24 @@ module.exports = grammar({
 
         line_comment: $ => /\/\/.*[\n\r]+/,
 
+        _statement_inner: $ => choice(
+            $.import,
+            $.include,
+            $.constant_declaration,
+            $.mutable_declaration,
+            $.type_alias,
+            $.type_declaration,
+            $.assignment,
+            $.call_expression,
+            $.return,
+            $.break,
+            $.yield,
+            $.defer,
+        ),
+
         _statement: $ => seq(
-            choice(
-                $.import,
-                $.constant_declaration,
-                $.mutable_declaration,
-                $.type_declaration,
-                $.assignment,
-                $.call_expression,
-                $.return,
-                $.break,
-                $.yield,
-            ),
+            repeat($.annotation),
+            $._statement_inner,
             ";",
         ),
 
@@ -27,18 +33,24 @@ module.exports = grammar({
             $.integer_literal,
             $.float_literal,
             $.boolean_literal,
+            $.string_literal,
+            $.char_literal,
             $.variable,
             $.function_declaration,
             $.unary_expression,
             $.binary_expression,
             $.paren_expression,
             $.call_expression,
+            // $.array_slice_index,
             $.struct_initializer,
+            $.array_initializer,
         ),
 
-        _type: $ => prec(10, choice(
+        _type: $ => prec(0, choice(
             $.primitive_type,
             $.struct_type,
+            $.array_type,
+            $.slice_type,
             $.pointer_type,
             $.identifier,
             $.scope,
@@ -47,6 +59,11 @@ module.exports = grammar({
         identifier: $ => /[a-zA-Z_][0-9a-zA-Z_]*/,
         field: $ => seq(token.immediate("."), field("name", $.identifier)),
         scope: $ => seq($.identifier, repeat1($.field)),
+
+        annotation: $ => seq(
+            token.immediate("@"),
+            choice("test", $.identifier, $.scope),
+        ),
 
         import: $ => seq(
             "use",
@@ -57,10 +74,19 @@ module.exports = grammar({
             )),
         ),
 
+        include: $ => seq(
+            "include",
+            field("file", $.string_literal),
+            optional(seq(
+                "as",
+                field("alias", $.identifier),
+            )),
+        ),
+
         constant_declaration: $ => seq(
             "let",
             field("name", choice($.identifier, $.scope)),
-            optional($.type_annotation),
+            optional(field("type", $.type_annotation)),
             "=",
             field("value", $._expression),
         ),
@@ -69,13 +95,20 @@ module.exports = grammar({
             "let",
             "mut",
             field("name", choice($.identifier, $.scope)),
-            optional($.type_annotation),
+            optional(field("type", $.type_annotation)),
             "=",
             field("value", $._expression),
         ),
 
+        type_alias: $ => seq(
+            "type",
+            field("name", choice($.identifier, $.scope)),
+            "=",
+            field("type", $._type),
+        ),
+
         type_declaration: $ => seq(
-            optional("distinct"),
+            "distinct",
             "type",
             field("name", choice($.identifier, $.scope)),
             "=",
@@ -86,6 +119,17 @@ module.exports = grammar({
             $.identifier,
             $.scope,
             seq("*", field("pointee", $.variable)),
+            prec(20, seq(
+                field("array_name", $.variable),
+                "[",
+                $._expression,
+                "]",
+            )),
+        ),
+
+        slice_range: $ => seq(
+            $._expression,
+            optional(seq("..", $._expression)),
         ),
 
         assignment: $ => seq(
@@ -142,9 +186,23 @@ module.exports = grammar({
             "}",
         ),
 
+        array_type: $ => prec(10, seq(
+            field("member_type", $._type),
+            "[",
+            choice($.integer_literal, "_"),
+            "]",
+        )),
+
+        slice_type: $ => seq(
+            field("member_type", $._type),
+            "[",
+            optional("*"),
+            "]",
+        ),
+
         pointer_type: $ => prec(30, seq(
-            "*",
             $._type,
+            "*",
         )),
 
         integer_literal: $ => choice(
@@ -155,6 +213,8 @@ module.exports = grammar({
         ),
         float_literal: $ => /[0-9]*\.[0-9]+/,
         boolean_literal: $ => choice("true", "false"),
+        string_literal: $ => /\"(\\.|[^\"\\])*\"/,
+        char_literal: $ => /\'(\\.|[^\'\\])\'/,
 
         unary_expression: $ => prec(30, choice(
             seq(token.immediate("~"), $._expression),
@@ -243,12 +303,17 @@ module.exports = grammar({
             field("body", $.block),
         ),
 
+        break: $ => seq("break"),
+
         yield: $ => seq(
             "yield",
             field("value", $._expression),
         ),
 
-        break: $ => token("break"),
+        defer: $ => seq(
+            "defer",
+            field("statement", $._statement_inner),
+        ),
 
         if: $ => seq(
             "if",
@@ -274,8 +339,15 @@ module.exports = grammar({
             ")",
         )),
 
+        array_slice_index: $ => prec(20, seq(
+            field("name", choice($.identifier, $.scope)),
+            "[",
+            $._expression,
+            "]",
+        )),
+
         struct_initializer: $ => prec(20, seq(
-            field("struct_name", $._type),
+            field("struct_name", choice($.identifier, $.scope, $.struct_type)),// $._type),
             "{",
             repeat(seq(
                 ".",
@@ -285,6 +357,15 @@ module.exports = grammar({
                 ",",
             )),
             "}",
+        )),
+
+        array_initializer: $ => prec(20, seq(
+            "[",
+            repeat(choice(seq(
+                $._expression,
+                optional(","),
+            ), "...")),
+            "]",
         )),
     }
 })
