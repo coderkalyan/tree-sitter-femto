@@ -11,8 +11,8 @@ module.exports = grammar({
         _statement_inner: $ => choice(
             $.import,
             $.include,
-            $.constant_declaration,
-            $.mutable_declaration,
+            $.constant_definition,
+            $.mutable_definition,
             $.type_alias,
             $.type_declaration,
             $.assignment,
@@ -36,7 +36,7 @@ module.exports = grammar({
             $.string_literal,
             $.char_literal,
             $.variable,
-            $.function_declaration,
+            $.function_definition,
             $.unary_expression,
             $.binary_expression,
             $.paren_expression,
@@ -61,8 +61,8 @@ module.exports = grammar({
         scope: $ => seq($.identifier, repeat1($.field)),
 
         annotation: $ => seq(
-            token.immediate("@"),
-            choice("test", $.identifier, $.scope),
+            "@",
+            choice($.identifier, $.scope),
         ),
 
         import: $ => seq(
@@ -87,11 +87,17 @@ module.exports = grammar({
             "let",
             field("name", choice($.identifier, $.scope)),
             optional(field("type", $.type_annotation)),
+        ),
+
+        constant_definition: $ => seq(
+            "let",
+            field("name", choice($.identifier, $.scope)),
+            optional(field("type", $.type_annotation)),
             "=",
             field("value", $._expression),
         ),
 
-        mutable_declaration: $ => seq(
+        mutable_definition: $ => seq(
             "let",
             "mut",
             field("name", choice($.identifier, $.scope)),
@@ -251,7 +257,7 @@ module.exports = grammar({
             optional(field("type", $.type_annotation)),
         ),
 
-        function_declaration: $ => seq(
+        function_definition: $ => prec.left(seq(
             "fn",
             field("parameters", seq(
                 "(",
@@ -261,8 +267,8 @@ module.exports = grammar({
                 ")",
             )),
             optional(field("return_type", $._type)), // return type required, but optional to help the grammar
-            $.block,
-        ),
+            optional($.block), // should only be ommitted on import decls
+        )),
 
         block: $ => seq(
             "{",
@@ -297,7 +303,7 @@ module.exports = grammar({
 
         loop_range: $ => seq(
             "for",
-            field("binding", choice($.constant_declaration, $.mutable_declaration, $.assignment)), ";",
+            field("binding", choice($.constant_definition, $.mutable_definition, $.assignment)), ";",
             field("condition", $._expression), ";",
             field("afterthought", $.assignment),
             field("body", $.block),
